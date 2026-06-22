@@ -7,7 +7,7 @@ const connectDB = async () => {
     });
 
     console.log(
-      `\n✅ MongoDB Connected Successfully!`
+      `\nMongoDB Connected Successfully!`
     );
     console.log(
       `   Host: ${connectionInstance.connection.host}`
@@ -18,18 +18,18 @@ const connectDB = async () => {
 
     // ─── CONNECTION EVENT LISTENERS ──────────────────
     mongoose.connection.on("disconnected", () => {
-      console.log("⚠️  MongoDB disconnected!");
+      console.log("  MongoDB disconnected!");
     });
 
     mongoose.connection.on("reconnected", () => {
-      console.log("✅ MongoDB reconnected!");
+      console.log("MongoDB reconnected!");
     });
 
     mongoose.connection.on("error", (err) => {
-      console.error("❌ MongoDB connection error:", err);
+      console.error(" MongoDB connection error:", err);
     });
   } catch (error) {
-    console.error("❌ MongoDB Connection FAILED:", error.message);
+    console.error(" MongoDB Connection FAILED:", error.message);
     
     process.exit(1);
   }
