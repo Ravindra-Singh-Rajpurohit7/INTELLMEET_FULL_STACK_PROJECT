@@ -1,4 +1,4 @@
-// api.js — top mein add karo
+// client/src/services/api.js
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const apiCall = async (url, options = {}) => {
@@ -11,7 +11,6 @@ const apiCall = async (url, options = {}) => {
   };
 
   try {
-    // FIX: Production mein full URL use karo
     const fullUrl = `${BASE_URL}${url}`;
 
     const response = await fetch(fullUrl, {
@@ -20,6 +19,13 @@ const apiCall = async (url, options = {}) => {
     });
 
     const text = await response.text();
+
+    // FIX: Agar HTML aa raha hai JSON ki jagah (yahi "Unexpected token T" error hai)
+    if (text.startsWith('<!DOCTYPE') || text.startsWith('<html') || text.startsWith('The page')) {
+      console.error(`[API] Got HTML instead of JSON for ${fullUrl}`);
+      throw new Error('Backend server unreachable. Please check if backend is running.');
+    }
+
     const data = text ? JSON.parse(text) : {};
 
     if (response.status === 401) {
@@ -27,7 +33,7 @@ const apiCall = async (url, options = {}) => {
       if (typeof window !== 'undefined') {
         window.location.href = '/login';
       }
-      throw new Error(data.message || 'Session expired.');
+      throw new Error(data.message || 'Session expired. Please login again.');
     }
 
     if (!response.ok) {

@@ -212,6 +212,7 @@ const handleToggleRecording = async () => {
 };
 
 // Upload recording to backend
+// MeetingRoom.jsx mein uploadRecording function update karo
 const uploadRecording = async (blob) => {
   setUploadingRecording(true);
   showToast('Uploading recording...', 'info');
@@ -221,26 +222,31 @@ const uploadRecording = async (blob) => {
     formData.append('recording', blob, `meeting-${meetingId}-${Date.now()}.webm`);
 
     const token = localStorage.getItem('token');
-    const response = await fetch(
-      `${window.location.hostname === 'localhost' ? 'http://localhost:8000' : ''}/api/v1/meetings/${meetingId}/recording`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      }
-    );
+
+    // FIX: VITE_API_URL use karo
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const apiUrl = `${baseUrl}/api/v1/meetings/${meetingId}/recording`;
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        // Content-Type mat daalo — FormData khud set karta hai
+      },
+      body: formData,
+    });
 
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || 'Upload failed');
 
     showToast('Recording uploaded! AI will process it automatically.', 'success');
   } catch (err) {
+    console.error('[Recording Upload] Error:', err);
     showToast(err.message || 'Failed to upload recording', 'error');
   } finally {
     setUploadingRecording(false);
   }
 };
-
 
   // ── 7. Send meeting invite emails ──────────────────────────────────────────
   const handleSendMeetingInvite = async () => {
