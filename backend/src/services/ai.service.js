@@ -308,77 +308,123 @@ const processMeetingAI = async (meetingId, audioFilePath = null) => {
     );
 
     // ── STEP 5: Create Tasks from Action Items ───────────
-    console.log(
-      `[AI] ── STEP 5: Creating tasks from ${analysis.actionItems?.length || 0} action items...`
-    );
+// STEP 5 mein bhi same mapping use ho rahi hogi — verify karo
+console.log(`[AI] ── STEP 5: Creating tasks from ${analysis.actionItems?.length || 0} action items...`);
 
-    const createdTasks = [];
+const createdTasks = [];
 
-    if (analysis.actionItems?.length) {
-      for (const item of analysis.actionItems) {
-        try {
-          const task = await Task.create({
-            title: item.task,
-            description: item.context,
-            priority: item.priority,
-            dueDate: item.dueDate ? new Date(item.dueDate) : null,
-            status: "todo",
-            project: meeting.project,
-            team: meeting.team,
-            createdBy: meeting.host._id,
-            aiGenerated: true,
-            sourceMeeting: meetingId,
-          });
+if (meeting.team && meeting.project && analysis.actionItems?.length) {
+  for (const item of analysis.actionItems) {
+    try {
+      // FIX: Yahan bhi raw Gemini object use ho raha tha, safe extract karo
+      const task = await Task.create({
+        title: item.task || item.text || "Untitled task",
+        description: item.context || "",
+        priority: ["low", "medium", "high", "urgent"].includes(item.priority)
+          ? item.priority
+          : "medium",
+        dueDate: null, // dueDate string format inconsistent — skip karo for now
+        status: "todo",
+        project: meeting.project,
+        team: meeting.team,
+        createdBy: meeting.host._id,
+        aiGenerated: true,
+        sourceMeeting: meetingId,
+      });
 
-          createdTasks.push(task);
-          console.log(`[AI] ✅ Task created: "${task.title}"`);
-        } catch (taskErr) {
-          console.warn(
-            `[AI] ⚠️ Task creation failed for "${item.task}":`,
-            taskErr.message
-          );
-        }
-      }
+      createdTasks.push(task);
+      console.log(`[AI] ✅ Task created: "${task.title}"`);
+    } catch (taskErr) {
+      console.warn(`[AI] ⚠️ Task creation failed for "${item.task}":`, taskErr.message);
     }
+  }
+} else {
+  console.log("[AI] ℹ️ Skipping task creation — meeting has no team/project assigned");
+}
 
-    console.log(
-      `[AI] ✅ STEP 5 Complete: ${createdTasks.length} tasks created.`
-    );
-
+console.log(`[AI] ✅ STEP 5 Complete: ${createdTasks.length} tasks created.`);
     // ── STEP 6: Persist Results to DB ───────────────────
-    console.log("[AI] ── STEP 6: Updating meeting document in DB...");
+   // ai.service.js mein processMeetingAI function mein, STEP 6 ke updateOne se pehle yeh add karo
 
-    const updatedMeeting = await Meeting.findByIdAndUpdate(
-      meetingId,
-      {
-        transcript,
-        summary: analysis.summary,
-        smartNotes,
-        actionItems: analysis.actionItems,
-        aiStatus: "completed",
-        aiMetadata: {
-          keyDecisions: analysis.keyDecisions,
-          topics: analysis.topics,
-          sentiment: analysis.sentiment,
-          efficiency: analysis.meetingEfficiency,
-          risks: analysis.risks,
-          followUpDate: analysis.followUpDate
-            ? new Date(analysis.followUpDate)
-            : null,
-          processedAt: new Date(),
-          failedAt: null,
-          failureReason: "",
-        },
-      },
-      { new: true }
-    );
+// Risks ko safe string array mein convert karo (object ya string dono handle karo)
+// ai.service.js mein STEP 6 se PEHLE yeh mapping add karo
 
-    console.log(
-      `[AI] ✅ STEP 6 Complete: Meeting DB updated. aiStatus = "${updatedMeeting.aiStatus}"`
-    );
-    console.log(
-      `\n[AI] 🎉 Pipeline COMPLETE for meeting "${meeting.title}" | Tasks created: ${createdTasks.length}\n`
-    );
+// Safe risks (already fixed)
+const safeRisks = Array.isArray(analysis.risks)
+  ? analysis.risks.map((r) => {
+      if (typeof r === "string") return r;
+      if (typeof r === "object" && r !== null) {
+        return r.risk
+          ? `${r.risk}${r.mitigation ? ` (Mitigation: ${r.mitigation})` : ""}`
+          : JSON.stringify(r);
+      }
+      return String(r);
+    })
+  : [];
+
+const safeKeyDecisions = Array.isArray(analysis.keyDecisions)
+  ? analysis.keyDecisions.map((d) => {
+      if (typeof d === "string") return d;
+      if (typeof d === "object" && d !== null) {
+        return d.decision || JSON.stringify(d);
+      }
+      return String(d);
+    })
+  : [];
+
+// FIX: actionItems ko Meeting schema ke format mein convert karo
+const safeActionItems = Array.isArray(analysis.actionItems)
+  ? analysis.actionItems.map((item) => {
+      // dueDate parse karo — agar valid date string nahi hai toh null
+      let parsedDueDate = null;
+      if (item.dueDate && typeof item.dueDate === "string") {
+        const dateAttempt = new Date(item.dueDate);
+        // Valid date hai aur format YYYY-MM-DD jaisa dikhta hai
+        if (!isNaN(dateAttempt.getTime()) && /^\d{4}-\d{2}-\d{2}/.test(item.dueDate)) {
+          parsedDueDate = dateAttempt;
+        }
+        // "within 5 days" jaisi strings ko ignore karo — null rahega
+      }
+
+      return {
+        text: item.task || item.text || "Untitled task",
+        assigneeName: item.assignee || item.assigneeName || "Unassigned",
+        dueDate: parsedDueDate,
+        priority: ["low", "medium", "high"].includes(item.priority)
+          ? item.priority
+          : "medium",
+        status: "pending",
+        taskId: null,
+      };
+    })
+  : [];
+
+console.log("[AI] ── STEP 6: Updating meeting document in DB...");
+
+const updatedMeeting = await Meeting.findByIdAndUpdate(
+  meetingId,
+  {
+    transcript,
+    summary: analysis.summary,
+    smartNotes,
+    actionItems: safeActionItems,   // FIX: ab schema-compatible hai
+    aiStatus: "completed",
+    aiMetadata: {
+      keyDecisions: safeKeyDecisions,
+      topics: analysis.topics,
+      sentiment: analysis.sentiment,
+      efficiency: analysis.meetingEfficiency,
+      risks: safeRisks,
+      followUpDate: analysis.followUpDate,
+      processedAt: new Date(),
+    },
+  },
+  { new: true }
+);
+
+console.log(
+  `[AI] ✅ STEP 6 Complete: Meeting DB updated. aiStatus = "${updatedMeeting.aiStatus}"`
+);
 
     return {
       meeting: updatedMeeting,

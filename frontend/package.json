@@ -1,0 +1,15 @@
+{
+  "name": "intellmeet-root",
+  "version": "1.0.0",
+  "description": "Root workspace for IntellMeet - MERN stack video call & AI summary platform",
+  "type": "module",
+  "scripts": {
+    "install-all": "npm.cmd install --prefix server && npm.cmd install --prefix client",
+    "server": "npm.cmd run dev --prefix server",
+    "client": "npm.cmd run dev --prefix client",
+    "dev": "concurrently \"npm.cmd run server\" \"npm.cmd run client\""
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

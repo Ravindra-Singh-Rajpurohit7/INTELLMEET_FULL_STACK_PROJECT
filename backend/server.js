@@ -1,74 +1,74 @@
-// ═══════════════════════════════════════════════════════
-// IMPORTANT: dotenv must be configured FIRST
-// before any other imports that might need env variables
-// ═══════════════════════════════════════════════════════
+// server.js mein
 import dotenv from "dotenv";
 dotenv.config();
 
 import { createServer } from "http";
 import app from "./src/app.js";
 import { connectDB } from "./src/config/db.js";
+import { connectRedis } from "./src/config/redis.js";
+import { verifyCloudinaryConfig } from "./src/config/cloudinary.js";  // FIX: named import change
+import { initializeSocket } from "./src/socket/index.js";
 
 const PORT = process.env.PORT || 8000;
 
-// Create HTTP server
-// WHY: We create HTTP server separately (not app.listen)
-// because Socket.io needs to attach to httpServer, not Express app
 const httpServer = createServer(app);
+const io = initializeSocket(httpServer);
+app.set("io", io);
 
-// ─── START SERVER ─────────────────────────────────────
 const startServer = async () => {
   try {
-    // Step 1: Connect to MongoDB first
     await connectDB();
 
-    // Step 2: Start HTTP server
+    // FIX: Ab explicitly call karo, dotenv load hone ke baad
+    verifyCloudinaryConfig();
+
+    try {
+      await connectRedis();
+    } catch (redisError) {
+      console.warn(
+        "⚠️  Redis connection failed. Continuing without cache:",
+        redisError.message
+      );
+    }
+
     httpServer.listen(PORT, () => {
       console.log(`
-╔═══════════════════════════════════════════════╗
-║         IntellMeet Backend Server             ║
-╠═══════════════════════════════════════════════╣
-║  Status    : Running ✅                        ║
-║  Port      : ${PORT}                           ║
-║  Env       : ${process.env.NODE_ENV}            ║
-║  API Base  : http://localhost:${PORT}/api/v1   ║
-║  Health    : http://localhost:${PORT}/health   ║
-╚═══════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════╗
+║            IntellMeet Backend Server             ║
+╠══════════════════════════════════════════════════╣
+║  Status      : Running ✅                         ║
+║  Port        : ${PORT}                            ║
+║  Environment : ${process.env.NODE_ENV}            ║
+║  API Base    : http://localhost:${PORT}/api/v1    ║
+║  Health      : http://localhost:${PORT}/health    ║
+╚══════════════════════════════════════════════════╝
       `);
     });
   } catch (error) {
-    console.error("❌ Server startup failed:", error);
+    console.error("❌ Fatal: Server startup failed:", error.message);
     process.exit(1);
   }
 };
 
 startServer();
 
-// ─── GRACEFUL SHUTDOWN ────────────────────────────────
-// Handle process termination signals
-// This ensures ongoing requests complete before shutdown
-process.on("SIGTERM", () => {
-  console.log("\n⚠️  SIGTERM received. Shutting down gracefully...");
+process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", gracefulShutdown);
+
+function gracefulShutdown(signal) {
+  console.log(`\n⚠️  ${signal} received. Starting graceful shutdown...`);
   httpServer.close(() => {
-    console.log("✅ HTTP server closed.");
+    console.log("✅ HTTP server closed");
     process.exit(0);
   });
-});
+  setTimeout(() => {
+    console.error("❌ Forceful shutdown after timeout");
+    process.exit(1);
+  }, 10000);
+}
 
-process.on("SIGINT", () => {
-  console.log("\n⚠️  SIGINT received (Ctrl+C). Shutting down...");
-  httpServer.close(() => {
-    console.log("✅ HTTP server closed.");
-    process.exit(0);
-  });
-});
-
-// ─── UNHANDLED ERRORS ────────────────────────────────
-// Catch any unhandled promise rejections
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
-  // In production, you'd want to restart the server here
-  // For now, just log it
+process.on("unhandledRejection", (reason) => {
+  console.error("❌ Unhandled Promise Rejection:", reason);
 });
 
 process.on("uncaughtException", (err) => {
@@ -76,4 +76,4 @@ process.on("uncaughtException", (err) => {
   process.exit(1);
 });
 
-export { httpServer };
+export { httpServer, io };

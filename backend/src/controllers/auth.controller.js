@@ -303,6 +303,106 @@ const changePassword = asyncHandler(async (req, res) => {
 // Need jwt import for refreshAccessToken
 import jwt from "jsonwebtoken";
 
+
+
+// auth.controller.js mein yeh 2 functions add karo (existing exports ke saath)
+import crypto from "crypto";
+
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email?.trim()) throw new ApiError(400, "Email is required");
+
+  const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+  // Security: Same response whether user exists or not
+  if (!user) {
+    return res.status(200).json(
+      new ApiResponse(200, {}, "If this email exists, a reset link has been sent.")
+    );
+  }
+
+  // Generate reset token
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+  user.passwordResetToken = resetToken;
+  user.passwordResetExpiry = resetTokenExpiry;
+  await user.save({ validateBeforeSave: false });
+
+  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+  // Email bhejo
+  const { sendEmail } = await import("../services/email.service.js");
+  await sendEmail({
+    to: user.email,
+    subject: "Password Reset Request — IntellMeet",
+    html: `
+      <div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#0f172a;color:#e2e8f0;border-radius:16px;">
+        <h2 style="color:#818cf8;">Reset Your Password 🔐</h2>
+        <p>You requested a password reset for your IntellMeet account.</p>
+        <p>Click the button below to reset your password. This link expires in <strong>1 hour</strong>.</p>
+        <a href="${resetLink}"
+           style="display:inline-block;background:#6366f1;color:white;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;margin:20px 0;">
+          Reset Password →
+        </a>
+        <p style="color:#64748b;font-size:13px;margin-top:20px;">
+          If you didn't request this, ignore this email. Your password won't change.
+        </p>
+      </div>
+    `,
+  }).catch((err) => console.error("Reset email failed:", err.message));
+
+  return res.status(200).json(
+    new ApiResponse(200, {}, "If this email exists, a reset link has been sent.")
+  );
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  const { token, password } = req.body;
+
+  if (!token) throw new ApiError(400, "Reset token is required");
+  if (!password || password.length < 6) {
+    throw new ApiError(400, "Password must be at least 6 characters");
+  }
+
+  // DEBUG LOGS — temporarily add karo
+  console.log("=== RESET PASSWORD DEBUG ===");
+  console.log("Token received from frontend:", token);
+
+  const user = await User.findOne({
+    passwordResetToken: token,
+    passwordResetExpiry: { $gt: new Date() },
+  });
+
+  console.log("User found:", !!user);
+
+  // Agar user nahi mila, check karo kya token DB mein exist karta hai bina expiry check ke
+  if (!user) {
+    const anyUser = await User.findOne({ passwordResetToken: token });
+    console.log("User found WITHOUT expiry check:", !!anyUser);
+    if (anyUser) {
+      console.log("Token expiry in DB:", anyUser.passwordResetExpires);
+      console.log("Current time:", new Date());
+    }
+  }
+
+  if (!user) {
+    throw new ApiError(400, "Invalid or expired reset token. Please request a new one.");
+  }
+
+  user.password = password;
+  user.passwordResetToken = undefined;
+  user.passwordResetExpires = undefined;
+  user.refreshToken = undefined;
+  await user.save();
+
+  return res.status(200).json(
+    new ApiResponse(200, {}, "Password reset successfully. Please login with your new password.")
+  );
+});
+
+// Existing exports mein add karo:
 export {
   signup,
   login,
@@ -310,4 +410,6 @@ export {
   refreshAccessToken,
   getCurrentUser,
   changePassword,
+  forgotPassword,   // ← ADD
+  resetPassword,    // ← ADD
 };

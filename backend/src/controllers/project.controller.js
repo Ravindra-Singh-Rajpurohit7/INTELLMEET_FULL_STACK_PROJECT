@@ -449,7 +449,34 @@ const updateProjectMemberRole = asyncHandler(async (req, res) => {
       new ApiResponse(200, populated, "Member role updated successfully")
     );
 });
+// project.controller.js mein naya function
+const getProjectAnalytics = asyncHandler(async (req, res) => {
+  const { teamId } = req.query;
 
+  const filter = teamId ? { team: teamId } : {};
+
+  const [
+    totalMeetings,
+    totalTasks,
+    completedTasks,
+    aiProcessedMeetings,
+  ] = await Promise.all([
+    Meeting.countDocuments({ ...filter, isActive: true }),
+    Task.countDocuments(filter),
+    Task.countDocuments({ ...filter, status: "done" }),
+    Meeting.countDocuments({ ...filter, aiStatus: "completed" }),
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(200, {
+      totalMeetings,
+      totalTasks,
+      completedTasks,
+      completionRate: totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0,
+      aiProcessedMeetings,
+    }, "Analytics fetched")
+  );
+});
 export {
   createProject,
   getProjects,
@@ -459,4 +486,5 @@ export {
   addProjectMember,
   removeProjectMember,
   updateProjectMemberRole,
+  getProjectAnalytics
 };

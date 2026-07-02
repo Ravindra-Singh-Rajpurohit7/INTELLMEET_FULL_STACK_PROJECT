@@ -1,7 +1,8 @@
 import authRoutes from "./routes/auth.routes.js";
-// import userRoutes from "./routes/user.routes.js";
+import userRoutes from "./routes/user.routes.js";
 import teamRoutes from "./routes/team.routes.js";
 import projectRoutes from "./routes/project.routes.js";
+import chatRoutes from "./routes/chat.routes.js";
 
 
 import taskRoutes from "./routes/task.routes.js";
@@ -37,7 +38,7 @@ app.use(
 // Controls which origins can access our API
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
+     origin: process.env.CORS_ORIGIN || "http://localhost:3000",
     credentials: true, // Allow cookies to be sent cross-origin
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -94,7 +95,7 @@ app.get("/health", (req, res) => {
 // ─── 404 HANDLER ─────────────────────────────────────
 // If no route matched, return 404
 app.use("/api/v1/auth", authRoutes);
-// app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/teams", teamRoutes);
 app.use("/api/v1/projects", projectRoutes);
 app.use("/api/v1/tasks", taskRoutes);

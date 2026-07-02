@@ -10,22 +10,11 @@ import rateLimit from "express-rate-limit";
  */
 
 // ─── AUTH RATE LIMIT ─────────────────────────────────
-// 5 requests per 15 minutes per IP
-// Used for: login, signup, forgot-password
 export const authRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,
-  message: {
-    success: false,
-    statusCode: 429,
-    message:
-      "Too many authentication attempts. Please wait 15 minutes and try again.",
-  },
-  standardHeaders: true, // Returns RateLimit-* headers
-  legacyHeaders: false,
-  skipSuccessfulRequests: false, // Count successful requests too
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  skipSuccessfulRequests: true,
 });
-
 // ─── GENERAL API RATE LIMIT ──────────────────────────
 // 100 requests per minute per IP
 // Used for: general API endpoints

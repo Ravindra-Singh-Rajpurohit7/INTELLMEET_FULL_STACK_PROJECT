@@ -162,11 +162,111 @@ const getAllMeetings = asyncHandler(async (req, res) => {
   );
 });
 
+
+// POST /api/v1/meetings/:meetingId/invite
+const inviteToMeeting = asyncHandler(async (req, res) => {
+  const { meetingId } = req.params;
+  const { emails } = req.body;
+
+  if (!emails || !Array.isArray(emails) || emails.length === 0) {
+    throw new ApiError(400, "emails array is required");
+  }
+
+  const meeting = await Meeting.findById(meetingId);
+  if (!meeting) throw new ApiError(404, "Meeting not found");
+
+  if (!meeting.host.equals(req.user._id)) {
+    throw new ApiError(403, "Only host can send invites");
+  }
+
+  // FIX: Direct room link — code se join bhi ho sakta hai
+  const joinByCodeLink = `${process.env.FRONTEND_URL}/dashboard`;
+  const directJoinLink = `${process.env.FRONTEND_URL}/room/${meetingId}`;
+  const meetingCode = meeting.meetingCode;
+
+  const { sendEmail } = await import("../services/email.service.js");
+
+  await Promise.allSettled(
+    emails.map((email) =>
+      sendEmail({
+        to: email,
+        subject: `You're invited to "${meeting.title}" on IntellMeet`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 32px; background: #0f172a; color: #e2e8f0; border-radius: 16px;">
+            <h2 style="color: #818cf8; margin-bottom: 8px;">Meeting Invitation 📹</h2>
+            <p style="color: #94a3b8; margin-bottom: 24px;">
+              <strong style="color: #e2e8f0;">${req.user.fullName}</strong> 
+              has invited you to join a meeting on IntellMeet.
+            </p>
+            
+            <div style="background: #1e293b; border-left: 4px solid #6366f1; padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+              <p style="margin: 0 0 8px;"><strong>Meeting:</strong> ${meeting.title}</p>
+              <p style="margin: 0 0 16px;">
+                <strong>Meeting Code:</strong><br/>
+                <span style="font-family: monospace; font-size: 28px; font-weight: bold; letter-spacing: 6px; color: #818cf8;">
+                  ${meetingCode}
+                </span>
+              </p>
+              <p style="margin: 0; color: #64748b; font-size: 13px;">
+                ${new Date(meeting.scheduledAt).toLocaleString()}
+              </p>
+            </div>
+
+            <p style="color: #94a3b8; font-size: 14px; margin-bottom: 16px;">
+              <strong>Option 1:</strong> Click the button below to join directly:
+            </p>
+            <a href="${directJoinLink}" 
+               style="display: inline-block; background: #6366f1; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-bottom: 24px;">
+              Join Meeting Now →
+            </a>
+
+            <p style="color: #94a3b8; font-size: 14px; margin-bottom: 8px;">
+              <strong>Option 2:</strong> Go to 
+              <a href="${joinByCodeLink}" style="color: #818cf8;">${process.env.FRONTEND_URL}</a> 
+              → Dashboard → "Join Room" → Enter code:
+            </p>
+            <p style="font-family: monospace; font-size: 22px; font-weight: bold; letter-spacing: 4px; color: #818cf8; margin: 0;">
+              ${meetingCode}
+            </p>
+          </div>
+        `,
+      })
+    )
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { joinLink: directJoinLink, meetingCode },
+      "Invitations sent successfully"
+    )
+  );
+});
+
+export {
+  // ... existing exports ...
+  inviteToMeeting,
+};
 const getSingleMeeting = asyncHandler(async (req, res) => {
   const { meetingId } = req.params;
 
   const meeting = await getMeetingById(meetingId);
-  assertMeetingAccess(meeting, req.user._id);
+
+  // FIX: Agar user host nahi hai aur participants mein bhi nahi hai
+  // toh usse participant banao (direct URL join case)
+  const userId = req.user._id;
+  const isHost = meeting.host.equals(userId);
+  const isParticipant = meeting.participants.some((p) => p.equals(userId));
+
+  if (!isHost && !isParticipant) {
+    // Active meeting mein direct URL se aaya — add karo
+    if (meeting.status !== "ended" && meeting.status !== "cancelled") {
+      meeting.participants.push(userId);
+      await meeting.save();
+    } else {
+      throw new ApiError(403, "You do not have access to this meeting");
+    }
+  }
 
   const populated = await populateMeeting(
     Meeting.findById(meetingId)
@@ -176,7 +276,6 @@ const getSingleMeeting = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, populated, "Meeting fetched successfully"));
 });
-
 const updateMeeting = asyncHandler(async (req, res) => {
   const { meetingId } = req.params;
   const { title, description, participants, scheduledAt, team, project } =
@@ -271,6 +370,7 @@ const deleteMeeting = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "Meeting deleted successfully"));
 });
 
+
 const startMeeting = asyncHandler(async (req, res) => {
   const { meetingId } = req.params;
 
@@ -336,6 +436,7 @@ const endMeeting = asyncHandler(async (req, res) => {
   meeting.endedAt = endedAt;
   meeting.durationMinutes = durationMinutes;
   await meeting.save();
+  
 
   const populated = await populateMeeting(Meeting.findById(meetingId));
 
@@ -479,17 +580,17 @@ const cancelMeeting = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, populated, "Meeting cancelled successfully"));
 });
 
+// meeting.controller.js mein getMeetingByCode update karo
+
 const getMeetingByCode = asyncHandler(async (req, res) => {
   const { code } = req.params;
 
   if (!code?.trim()) throw new ApiError(400, "Meeting code is required");
 
-  const meeting = await populateMeeting(
-    Meeting.findOne({
-      meetingCode: code.trim().toUpperCase(),
-      isActive: true,
-    })
-  );
+  const meeting = await Meeting.findOne({
+    meetingCode: code.trim().toUpperCase(),
+    isActive: true,
+  });
 
   if (!meeting) throw new ApiError(404, "Meeting not found with this code");
 
@@ -497,9 +598,81 @@ const getMeetingByCode = asyncHandler(async (req, res) => {
     throw new ApiError(400, "This meeting is no longer active");
   }
 
+  // FIX: Joining user ko participants mein add karo (agar already nahi hai)
+  const userId = req.user._id;
+  const isAlreadyParticipant =
+    meeting.host.equals(userId) ||
+    meeting.participants.some((p) => p.equals(userId));
+
+  if (!isAlreadyParticipant) {
+    meeting.participants.push(userId);
+    await meeting.save();
+  }
+
+  const populated = await populateMeeting(Meeting.findById(meeting._id));
+
   return res
     .status(200)
-    .json(new ApiResponse(200, meeting, "Meeting fetched successfully"));
+    .json(new ApiResponse(200, populated, "Meeting fetched successfully"));
+});
+import { uploadAudio } from "../services/storage.service.js";
+import fs from "fs";
+
+const uploadRecording = asyncHandler(async (req, res) => {
+  const { meetingId } = req.params;
+
+  if (!req.file) throw new ApiError(400, "Recording file is required");
+
+  const meeting = await getMeetingById(meetingId);
+  assertMeetingHost(meeting, req.user._id);
+
+  const localFilePath = req.file.path;
+
+  // FIX: Pehle AI processing ke liye file ka copy bana lo
+  // kyunki uploadAudio() original file delete kar dega
+  const fs = await import("fs");
+  const path = await import("path");
+
+  const aiCopyPath = path.join(
+    path.dirname(localFilePath),
+    `ai-copy-${path.basename(localFilePath)}`
+  );
+  fs.copyFileSync(localFilePath, aiCopyPath);
+
+  // Cloudinary upload (yeh original file delete kar dega)
+  const { uploadAudio } = await import("../services/storage.service.js");
+  const uploaded = await uploadAudio(localFilePath, meetingId);
+
+  meeting.recordingUrl = uploaded.url;
+  meeting.isRecorded = true;
+  await meeting.save();
+
+  // FIX: AI processing ko copy wali file do (jo abhi exist karti hai)
+  const aiService = await import("../services/ai.service.js");
+
+  aiService.processMeetingAI(meetingId, aiCopyPath)
+    .then((result) => {
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`meeting:${meetingId}`).emit("ai:processing-complete", {
+          meetingId,
+          tasksCreated: result.tasksCreated,
+          actionItems: result.actionItems,
+          summary: result.summary,
+        });
+      }
+    })
+    .catch((err) => {
+      console.error(`AI auto-processing failed for ${meetingId}:`, err.message);
+      // Cleanup agar AI fail ho jaye
+      if (fs.existsSync(aiCopyPath)) {
+        try { fs.unlinkSync(aiCopyPath); } catch {}
+      }
+    });
+
+  return res.status(200).json(
+    new ApiResponse(200, { recordingUrl: uploaded.url }, "Recording uploaded successfully. AI processing started automatically.")
+  );
 });
 
 export {
@@ -515,4 +688,5 @@ export {
   removeParticipant,
   cancelMeeting,
   getMeetingByCode,
+  uploadRecording
 };

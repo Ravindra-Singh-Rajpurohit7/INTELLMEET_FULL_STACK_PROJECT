@@ -7,6 +7,8 @@ import {
   refreshAccessToken,
   getCurrentUser,
   changePassword,
+  forgotPassword,   // ← ADD
+  resetPassword,    // ← ADD
 } from "../controllers/auth.controller.js";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 import { validate } from "../middleware/validate.middleware.js";
@@ -87,6 +89,46 @@ router.post(
  * Get new access token using refresh token
  */
 router.post("/refresh-token", refreshRateLimit, refreshAccessToken);
+
+
+
+// Existing routes ke saath add karo (verifyJWT se PEHLE — public routes)
+
+router.post(
+  "/forgot-password",
+  authRateLimit,
+  [
+    body("email")
+      .trim()
+      .notEmpty()
+      .withMessage("Email is required")
+      .isEmail()
+      .withMessage("Please enter a valid email")
+      .normalizeEmail(),
+    validate,
+  ],
+  forgotPassword
+);
+
+router.post(
+  "/reset-password",
+  [
+    body("token")
+      .notEmpty()
+      .withMessage("Reset token is required"),
+    body("password")
+      .notEmpty()
+      .withMessage("Password is required")
+      .isLength({ min: 6 })
+      .withMessage("Password must be at least 6 characters")
+      .matches(/\d/)
+      .withMessage("Password must contain at least one number"),
+    validate,
+  ],
+  resetPassword
+);
+
+// ... existing routes (verifyJWT wale)
 
 // ═══════════════════════════════════════════════════════
 // PROTECTED ROUTES (Authentication required)

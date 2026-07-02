@@ -258,31 +258,48 @@ const getTasks = asyncHandler(async (req, res) => {
     }
     filter.team = teamId;
   } else {
-    const userTeams = req.user.teams || [];
-    if (!userTeams.length) {
-      return res
-        .status(200)
-        .json(
-          new ApiResponse(
-            200,
-            { tasks: [], pagination: { page: parsedPage, limit: parsedLimit, total: 0, pages: 0 } },
-            "Tasks fetched successfully"
-          )
-        );
+    // FIX 1: Safe extraction check lagaya hai agar user ya teams undefined/null ho
+    const freshUser = await User.findById(req.user._id).select("teams").lean();
+    const userTeams = freshUser && Array.isArray(freshUser.teams) ? freshUser.teams : [];
+
+    if (userTeams.length === 0) {
+      return res.status(200).json(
+        new ApiResponse(
+          200,
+          {
+            tasks: [],
+            pagination: {
+              page: parsedPage,
+              limit: parsedLimit,
+              total: 0,
+              pages: 0,
+              hasNext: false,
+              hasPrev: false,
+            },
+          },
+          "No tasks found — join a team to see tasks"
+        )
+      );
     }
     filter.team = { $in: userTeams };
   }
 
   if (status) {
     if (!VALID_STATUSES.includes(status)) {
-      throw new ApiError(400, `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}`);
+      throw new ApiError(
+        400,
+        `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}`
+      );
     }
     filter.status = status;
   }
 
   if (priority) {
     if (!VALID_PRIORITIES.includes(priority)) {
-      throw new ApiError(400, `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
+      throw new ApiError(
+        400,
+        `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(", ")}`
+      );
     }
     filter.priority = priority;
   }
@@ -311,13 +328,13 @@ const getTasks = asyncHandler(async (req, res) => {
     new ApiResponse(
       200,
       {
-        tasks,
+        tasks: tasks || [], // FIX 2: Agar kisi wajah se tasks null aaye toh empty array pass ho
         pagination: {
           page: parsedPage,
           limit: parsedLimit,
-          total,
-          pages: Math.ceil(total / parsedLimit),
-          hasNext: parsedPage * parsedLimit < total,
+          total: total || 0,
+          pages: Math.ceil((total || 0) / parsedLimit),
+          hasNext: parsedPage * parsedLimit < (total || 0),
           hasPrev: parsedPage > 1,
         },
       },
@@ -325,16 +342,18 @@ const getTasks = asyncHandler(async (req, res) => {
     )
   );
 });
-
 const getSingleTask = asyncHandler(async (req, res) => {
   const { taskId } = req.params;
-  await getTaskAndAssertAccess(taskId, req.user._id);
 
-  const populated = await populateTask(Task.findById(taskId));
+  // This helper already validates the ID and checks if the user belongs to the project
+  const { task } = await getTaskAndAssertAccess(taskId, req.user._id);
+
+  // Fetch the fully populated task details
+  const populatedTask = await populateTask(Task.findById(task._id));
 
   return res
     .status(200)
-    .json(new ApiResponse(200, populated, "Task fetched successfully"));
+    .json(new ApiResponse(200, populatedTask, "Task fetched successfully"));
 });
 
 const updateTask = asyncHandler(async (req, res) => {

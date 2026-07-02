@@ -271,34 +271,60 @@ const joinTeam = asyncHandler(async (req, res) => {
   session.startTransaction();
 
   try {
-    // findOneAndUpdate with atomic check to prevent race conditions
-    const team = await Team.findOneAndUpdate(
-      {
-        _id: teamId,
-        isActive: true,
-        pendingInvites: {
-          $elemMatch: {
-            token,
-            email: req.user.email,
-            expiresAt: { $gt: new Date() },
-          },
+    // FIX: Email case-insensitive match + token match
+    // Pehle team find karo bina email check ke (sirf token se)
+    const team = await Team.findOne({
+      _id: teamId,
+      isActive: true,
+      pendingInvites: {
+        $elemMatch: {
+          token: token,
+          expiresAt: { $gt: new Date() },
         },
       },
-      {
-        $pull: { pendingInvites: { token } },
-      },
-      { new: false, session }
-    );
+    }).session(session);
 
     if (!team) {
-      throw new ApiError(400, "Invalid or expired invitation token");
+      throw new ApiError(
+        400,
+        "Invalid or expired invitation token. Please ask the team admin to send a new invite."
+      );
     }
 
+    // Token se invite nikalo
+    const invite = team.pendingInvites.find(
+      (inv) => inv.token === token && inv.expiresAt > new Date()
+    );
+
+    if (!invite) {
+      throw new ApiError(400, "Invitation not found or expired.");
+    }
+
+    // FIX: Email check — case insensitive
+    const invitedEmail = invite.email?.toLowerCase().trim();
+    const currentUserEmail = req.user.email?.toLowerCase().trim();
+
+    if (invitedEmail !== currentUserEmail) {
+      throw new ApiError(
+        403,
+        `This invitation was sent to ${invitedEmail}. You are logged in as ${currentUserEmail}. Please login with the correct account.`
+      );
+    }
+
+    // Already member check
     const alreadyMember = team.members.some((m) =>
       m.user.equals(req.user._id)
     );
+
     if (alreadyMember) {
-      await session.abortTransaction();
+      // Token remove karo aur success return karo
+      await Team.findByIdAndUpdate(
+        teamId,
+        { $pull: { pendingInvites: { token } } },
+        { session }
+      );
+      await session.commitTransaction();
+
       const populated = await populateTeam(Team.findById(teamId));
       return res
         .status(200)
@@ -307,18 +333,17 @@ const joinTeam = asyncHandler(async (req, res) => {
         );
     }
 
-    const invite = team.pendingInvites.find(
-      (inv) => inv.token === token && inv.email === req.user.email
-    );
-
+    // Atomic: token remove + member add
     await Team.findByIdAndUpdate(
       teamId,
       {
+        $pull: { pendingInvites: { token } },
         $push: {
           members: {
             user: req.user._id,
-            role: invite?.role || "member",
-            invitedBy: invite?.invitedBy,
+            role: invite.role || "member",
+            invitedBy: invite.invitedBy,
+            joinedAt: new Date(),
           },
         },
       },
@@ -337,7 +362,7 @@ const joinTeam = asyncHandler(async (req, res) => {
 
     return res
       .status(200)
-      .json(new ApiResponse(200, populated, "Joined team successfully"));
+      .json(new ApiResponse(200, populated, "Joined team successfully! Welcome aboard."));
   } catch (err) {
     await session.abortTransaction();
     throw err;

@@ -3,6 +3,7 @@ import { Router } from "express";
 import { body, param, query } from "express-validator";
 import {
   createMeeting,
+  inviteToMeeting,
   getAllMeetings,
   getSingleMeeting,
   updateMeeting,
@@ -14,6 +15,7 @@ import {
   removeParticipant,
   cancelMeeting,
   getMeetingByCode,
+  uploadRecording
 } from "../controllers/meeting.controller.js";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 import { validate } from "../middleware/validate.middleware.js";
@@ -170,7 +172,20 @@ router.patch(
   ],
   updateMeeting
 );
-
+router.post(
+  "/:meetingId/invite",
+  [
+    param("meetingId").isMongoId().withMessage("Invalid meetingId"),
+    body("emails")
+      .isArray({ min: 1 })
+      .withMessage("emails must be a non-empty array"),
+    body("emails.*")
+      .isEmail()
+      .withMessage("Each email must be valid"),
+    validate,
+  ],
+  inviteToMeeting
+);
 router.delete(
   "/:meetingId",
   [
@@ -181,7 +196,39 @@ router.delete(
   ],
   deleteMeeting
 );
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
+const recordingStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = "uploads/recordings";
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `recording-${Date.now()}${path.extname(file.originalname)}`);
+  },
+});
+
+const recordingUpload = multer({
+  storage: recordingStorage,
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB max
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("video/") || file.mimetype.startsWith("audio/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only audio/video files allowed"));
+    }
+  },
+});
+
+router.post(
+  "/:meetingId/recording",
+  [param("meetingId").isMongoId().withMessage("Invalid meetingId"), validate],
+  recordingUpload.single("recording"),
+  uploadRecording
+);
 router.post(
   "/:meetingId/start",
   [
