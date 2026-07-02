@@ -5,6 +5,15 @@
 const apiCall = async (url, options = {}) => {
   const token = localStorage.getItem('token');
   
+  // 🔽 YAHAN BASE URL LOGIN LAKAYEIN
+  // Agar URL pehle se http se shuru ho rha h toh wahi rehne do, nahi toh environment variable lagao
+  const baseURL = import.meta.env.VITE_API_BASE_URL || '';
+  
+  // Clean forward slashes so we don't accidentally get double slashes (e.g. //api/v1)
+  const cleanUrl = url.startsWith('http') 
+    ? url 
+    : `${baseURL.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
+
   const headers = {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
@@ -12,7 +21,8 @@ const apiCall = async (url, options = {}) => {
   };
 
   try {
-    const response = await fetch(url, {
+    // 🔽 `url` ki jagah `cleanUrl` pass karo
+    const response = await fetch(cleanUrl, {
       ...options,
       headers,
     });
