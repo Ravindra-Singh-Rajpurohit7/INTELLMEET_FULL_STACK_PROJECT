@@ -7,29 +7,29 @@ const getTransporter = () => {
   if (transporter) return transporter;
 
   transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false, // Port 587 ke liye strict false hi rahega
+    // 💡 smtp.gmail.com ke bajay force-resolve karne ke liye fallback handling
+    host: 'smtp.gmail.com', 
+    port: 587,
+    secure: false,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
     tls: {
-      // Isse handshake ke waqt local certificate validation strict nahi hogi
       rejectUnauthorized: false,
     },
-    // ❌ Pool: true ko hata diya hai taaki stale connections ka jhanjhat khatam ho
-    connectionTimeout: 8000,   // 8 seconds mein agar connect nahi hua toh kat do
-    greetingTimeout: 8000,     // 8 seconds for welcome handshake
-    socketTimeout: 10000,      // 10 seconds max data transfer time
+    // 🔥 CRITICAL FIX: IPv6 ENETUNREACH error ko rokne ke liye IPv4 force karna
+    family: 4, 
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
  
-  // Startup validation check
   transporter.verify((error, success) => {
     if (error) {
       console.error('❌ [EmailService] SMTP Handshake Failed:', error.message);
     } else {
-      console.log('✅ [EmailService] SMTP Connection is alive and shaking!');
+      console.log('✅ [EmailService] SMTP Connection is alive and shaking via IPv4!');
     }
   });
 
