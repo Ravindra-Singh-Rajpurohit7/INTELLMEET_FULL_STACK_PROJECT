@@ -7,24 +7,34 @@ const getTransporter = () => {
   if (transporter) return transporter;
 
   transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
+    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: process.env.EMAIL_SECURE === "true",
+    secure: false, // 587 ke sath strict false rahega, true hote hi timeout hoga
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
     tls: {
-      rejectUnauthorized: process.env.NODE_ENV === "production",
+      // ❌ Is line ko change kiya: Production mein timeout rokne ke liye false zaroori hai
+      rejectUnauthorized: false,
+      ciphers: 'SSLv3'
     },
     pool: true,
     maxConnections: 5,
     maxMessages: 100,
   });
+ 
+// Base connection testing on startup/initialization
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error('❌ [EmailService] SMTP Connection Error:', error.message);
+    } else {
+      console.log('✅ [EmailService] SMTP Connection established successfully!');
+    }
+  });
 
   return transporter;
 };
-
 const baseHTML = (bodyContent) => `
 <!DOCTYPE html>
 <html lang="en">
