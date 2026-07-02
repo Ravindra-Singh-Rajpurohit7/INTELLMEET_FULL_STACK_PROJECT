@@ -9,27 +9,27 @@ const getTransporter = () => {
   transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false, // 587 ke sath strict false rahega, true hote hi timeout hoga
+    secure: false, // Port 587 ke liye strict false hi rahega
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
     tls: {
-      // ❌ Is line ko change kiya: Production mein timeout rokne ke liye false zaroori hai
+      // Isse handshake ke waqt local certificate validation strict nahi hogi
       rejectUnauthorized: false,
-      ciphers: 'SSLv3'
     },
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
+    // ❌ Pool: true ko hata diya hai taaki stale connections ka jhanjhat khatam ho
+    connectionTimeout: 8000,   // 8 seconds mein agar connect nahi hua toh kat do
+    greetingTimeout: 8000,     // 8 seconds for welcome handshake
+    socketTimeout: 10000,      // 10 seconds max data transfer time
   });
  
-// Base connection testing on startup/initialization
+  // Startup validation check
   transporter.verify((error, success) => {
     if (error) {
-      console.error('❌ [EmailService] SMTP Connection Error:', error.message);
+      console.error('❌ [EmailService] SMTP Handshake Failed:', error.message);
     } else {
-      console.log('✅ [EmailService] SMTP Connection established successfully!');
+      console.log('✅ [EmailService] SMTP Connection is alive and shaking!');
     }
   });
 
