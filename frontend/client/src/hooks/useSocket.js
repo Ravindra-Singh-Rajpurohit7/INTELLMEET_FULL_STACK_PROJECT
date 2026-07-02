@@ -2,10 +2,11 @@
 import { useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-const SOCKET_SERVER_URL =
-  window.location.hostname === 'localhost'
+// useSocket.js mein URL fix karo
+const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL ||
+  (window.location.hostname === 'localhost'
     ? 'http://localhost:8000'
-    : window.location.origin;
+    : window.location.origin);
 
 /**
  * Custom hook to initialize and manage a Socket.io connection.
