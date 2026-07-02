@@ -45,7 +45,7 @@ const connectRedis = async () => {
     console.warn("⚠️  Redis connection failed:", error.message);
     redisClient = null;
     isRedisConnected = false;
-    throw error;
+    // throw error;
   }
 };
 
