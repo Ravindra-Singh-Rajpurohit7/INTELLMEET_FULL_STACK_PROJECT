@@ -1,40 +1,8 @@
-// src/services/email.service.js
-import nodemailer from "nodemailer";
+import { Resend } from 'resend';
 
-let transporter = null;
+// Initialize Resend with API Key from environment
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-const getTransporter = () => {
-  if (transporter) return transporter;
-
-  transporter = nodemailer.createTransport({
-    // 💡 smtp.gmail.com ke bajay force-resolve karne ke liye fallback handling
-    host: 'smtp.gmail.com', 
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    tls: {
-      rejectUnauthorized: false,
-    },
-    // 🔥 CRITICAL FIX: IPv6 ENETUNREACH error ko rokne ke liye IPv4 force karna
-    family: 4, 
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-  });
- 
-  transporter.verify((error, success) => {
-    if (error) {
-      console.error('❌ [EmailService] SMTP Handshake Failed:', error.message);
-    } else {
-      console.log('✅ [EmailService] SMTP Connection is alive and shaking via IPv4!');
-    }
-  });
-
-  return transporter;
-};
 const baseHTML = (bodyContent) => `
 <!DOCTYPE html>
 <html lang="en">
@@ -75,7 +43,7 @@ const baseHTML = (bodyContent) => `
     </div>
     <div class="body">${bodyContent}</div>
     <div class="footer">
-      <p>© ${new Date().getFullYear()} IntellMeet · <a href="${process.env.FRONTEND_URL}">Visit Platform</a></p>
+      <p>© ${new Date().getFullYear()} IntellMeet · <a href="${process.env.FRONTEND_URL || '#'}">Visit Platform</a></p>
       <p style="margin-top:6px">This is an automated email. Please do not reply directly.</p>
     </div>
   </div>
@@ -84,32 +52,33 @@ const baseHTML = (bodyContent) => `
 </html>
 `;
 
+// 🔥 Replaced Nodemailer with Resend API call (Bypasses all network/port blocks)
 const sendEmail = async ({ to, subject, html, text }) => {
   try {
-    const t = getTransporter();
-    const info = await t.sendMail({
-      from: process.env.EMAIL_FROM || "IntellMeet <noreply@intellmeet.com>",
-      to,
-      subject,
-      html,
+    const { data, error } = await resend.emails.send({
+      // Resend free tier allows sending from onboarding@resend.dev to your verified register email
+      from: 'IntellMeet <onboarding@resend.dev>',
+      to: [to],
+      subject: subject,
+      html: html,
       text: text || subject,
     });
-    return { success: true, messageId: info.messageId };
+
+    if (error) {
+      console.error('[Resend Error]:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`✅ [EmailService] Email sent successfully via Resend API: ${data.id}`);
+    return { success: true, messageId: data.id };
   } catch (error) {
-    console.error(`[EmailService] Failed to send to ${to}:`, error.message);
+    console.error(`[EmailService] HTTP Request Failed for ${to}:`, error.message);
     return { success: false, error: error.message };
   }
 };
 
-const sendTeamInviteEmail = async ({
-  to,
-  inviterName,
-  teamName,
-  inviteLink,
-  role,
-}) => {
+const sendTeamInviteEmail = async ({ to, inviterName, teamName, inviteLink, role }) => {
   const subject = `${inviterName} invited you to join "${teamName}" on IntellMeet`;
-
   const html = baseHTML(`
     <h2>You've been invited to a team! 🎉</h2>
     <p>Hi there,</p>
@@ -128,37 +97,18 @@ const sendTeamInviteEmail = async ({
       If you were not expecting this, you can safely ignore this email.
     </p>
   `);
-
   return sendEmail({ to, subject, html });
 };
 
-const sendTaskAssignedEmail = async ({
-  to,
-  assigneeName,
-  taskTitle,
-  projectName,
-  dueDate,
-  assignedBy,
-  taskLink,
-  priority,
-}) => {
+const sendTaskAssignedEmail = async ({ to, assigneeName, taskTitle, projectName, dueDate, assignedBy, taskLink, priority }) => {
   const subject = `New task assigned to you: "${taskTitle}"`;
-
   const badgeClass = `badge-${priority || "medium"}`;
-  const formattedDue = dueDate
-    ? new Date(dueDate).toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    : "No due date set";
+  const formattedDue = dueDate ? new Date(dueDate).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : "No due date set";
 
   const html = baseHTML(`
     <h2>You have a new task 📋</h2>
     <p>Hi ${assigneeName},</p>
-    <p><strong>${assignedBy}</strong> has assigned you a task in the
-    <strong>${projectName}</strong> project.</p>
+    <p><strong>${assignedBy}</strong> has assigned you a task in the <strong>${projectName}</strong> project.</p>
     <div class="highlight">
       <strong>Task</strong>
       <span>${taskTitle}</span>
@@ -173,41 +123,19 @@ const sendTaskAssignedEmail = async ({
     </div>
     <a href="${taskLink}" class="btn">View Task →</a>
     <hr class="divider"/>
-    <p style="color:#9ca3af;font-size:13px">
-      Log in to IntellMeet to see full task details, add comments, and update progress.
-    </p>
+    <p style="color:#9ca3af;font-size:13px">Log in to IntellMeet to see full task details.</p>
   `);
-
   return sendEmail({ to, subject, html });
 };
 
-const sendMeetingReminderEmail = async ({
-  to,
-  userName,
-  meetingTitle,
-  scheduledAt,
-  meetingCode,
-  hostName,
-  joinLink,
-  minutesBefore = 30,
-}) => {
+const sendMeetingReminderEmail = async ({ to, userName, meetingTitle, scheduledAt, meetingCode, hostName, joinLink, minutesBefore = 30 }) => {
   const subject = `Reminder: "${meetingTitle}" starts in ${minutesBefore} minutes`;
-
-  const formattedTime = new Date(scheduledAt).toLocaleString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
+  const formattedTime = new Date(scheduledAt).toLocaleString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
 
   const html = baseHTML(`
     <h2>Your meeting is starting soon ⏰</h2>
     <p>Hi ${userName},</p>
-    <p>Just a reminder that your meeting is starting in
-    <strong>${minutesBefore} minutes</strong>.</p>
+    <p>Just a reminder that your meeting is starting in <strong>${minutesBefore} minutes</strong>.</p>
     <div class="highlight">
       <strong>Meeting</strong>
       <span>${meetingTitle}</span>
@@ -222,78 +150,33 @@ const sendMeetingReminderEmail = async ({
     </div>
     <div class="highlight">
       <strong>Meeting Code</strong>
-      <span style="font-family:monospace;font-size:18px;font-weight:700;
-                   letter-spacing:0.15em;color:#6d28d9">${meetingCode}</span>
+      <span style="font-family:monospace;font-size:18px;font-weight:700;letter-spacing:0.15em;color:#6d28d9">${meetingCode}</span>
     </div>
     <a href="${joinLink}" class="btn">Join Meeting Now →</a>
-    <hr class="divider"/>
-    <p style="color:#9ca3af;font-size:13px">
-      Make sure your camera and microphone are working before joining.
-    </p>
   `);
-
   return sendEmail({ to, subject, html });
 };
 
-const sendMeetingSummaryEmail = async ({
-  to,
-  userName,
-  meetingTitle,
-  summary,
-  actionItems,
-  dashboardLink,
-}) => {
+const sendMeetingSummaryEmail = async ({ to, userName, meetingTitle, summary, actionItems, dashboardLink }) => {
   const subject = `AI Summary Ready: "${meetingTitle}"`;
-
-  const actionItemsHTML =
-    actionItems?.length > 0
-      ? `
-      <h3 style="margin-top:24px;margin-bottom:12px;color:#111827">
-        Action Items (${actionItems.length})
-      </h3>
+  const actionItemsHTML = actionItems?.length > 0 ? `
+      <h3 style="margin-top:24px;margin-bottom:12px;color:#111827">Action Items (${actionItems.length})</h3>
       <ul style="padding-left:20px">
-        ${actionItems
-          .map(
-            (item) => `
-          <li style="margin-bottom:10px">
-            <strong>${item.text}</strong>
-            ${
-              item.assigneeName && item.assigneeName !== "Unassigned"
-                ? `<br/><span style="color:#6b7280;font-size:13px">
-                   → Assigned to: ${item.assigneeName}</span>`
-                : ""
-            }
-            ${
-              item.dueDate
-                ? `<br/><span style="color:#6b7280;font-size:13px">
-                   📅 Due: ${new Date(item.dueDate).toLocaleDateString()}</span>`
-                : ""
-            }
-          </li>
-        `
-          )
-          .join("")}
+        ${actionItems.map((item) => `<li style="margin-bottom:10px"><strong>${item.text}</strong></li>`).join("")}
       </ul>
-    `
-      : "";
+    ` : "";
 
   const html = baseHTML(`
     <h2>Your meeting summary is ready 🤖</h2>
     <p>Hi ${userName},</p>
-    <p>The AI has finished analyzing your meeting
-    <strong>"${meetingTitle}"</strong>. Here's what was discussed:</p>
+    <p>The AI has finished analyzing your meeting <strong>"${meetingTitle}"</strong>.</p>
     <div class="highlight">
       <strong>Summary</strong>
       <span>${summary}</span>
     </div>
     ${actionItemsHTML}
     <a href="${dashboardLink}" class="btn">View Full Summary →</a>
-    <hr class="divider"/>
-    <p style="color:#9ca3af;font-size:13px">
-      Tasks have been automatically created from action items in your project board.
-    </p>
   `);
-
   return sendEmail({ to, subject, html });
 };
 
