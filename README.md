@@ -243,8 +243,8 @@ You'll need accounts for:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/intellmeet.git
-cd intellmeet
+git clone https://github.com/Ravindra-Singh-Rajpurohit7/INTELLMEET_FULL_STACK_PROJECT
+cd zidio-webd-project
 
 # 2. Install Backend dependencies
 cd backend
