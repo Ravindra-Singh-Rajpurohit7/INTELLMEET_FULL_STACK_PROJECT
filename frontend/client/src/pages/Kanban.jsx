@@ -178,7 +178,7 @@ const KanbanColumn = ({ column, tasks, onAddTask }) => {
   );
 };
 // ─── Column Component — droppable area add karo ──────────────────────────────
-import { useDroppable } from '@dnd-kit/core';
+
 
 const DroppableColumn = ({ column, tasks, onAddTask }) => {
   const { setNodeRef, isOver } = useDroppable({
