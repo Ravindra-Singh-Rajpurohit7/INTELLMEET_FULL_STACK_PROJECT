@@ -649,6 +649,17 @@ Meeting documents have variable structure (some have recordings, some don't; act
 | **sarvika** |   |
 
 ---
+## PROJECT_CLICKS
+<img width="632" height="294" alt="Screenshot 2026-07-03 201939" src="https://github.com/user-attachments/assets/fce163ed-ebbf-4a38-9943-be4a34f80890" />
+
+<img width="636" height="291" alt="image" src="https://github.com/user-attachments/assets/024f705d-4b21-465c-b68b-2f4c33a5138c" />
+
+<img width="637" height="296" alt="image" src="https://github.com/user-attachments/assets/0144acd6-554b-4051-ab32-01b23ff83609" />
+
+<img width="638" height="297" alt="image" src="https://github.com/user-attachments/assets/92d3a76d-d7fe-4fc8-a12c-81a4017c617d" />
+
+<img width="635" height="293" alt="image" src="https://github.com/user-attachments/assets/df895a06-a7c8-4960-86b8-6f7ad2493692" />
+
 
 ## 📄 License
 
