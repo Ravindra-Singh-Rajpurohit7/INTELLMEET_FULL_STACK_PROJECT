@@ -643,10 +643,10 @@ Meeting documents have variable structure (some have recordings, some don't; act
 
 | Name | Role | Module |
 |------|------|--------|
-| **Ravindra Singh Rajpurohit** | Team Lead & Full Stack | AI Pipeline, Task Management, Deployment |
-| **kushagra** | Backend Developer | Auth System, User Management |
-| **Gaurav** | Backend Developer | Meeting APIs, Real-Time |
-| **sarvika** | Frontend Developer | Chat, Notifications |
+| **Ravindra Singh Rajpurohit** | Team Lead & Full Stack | AI Pipeline, Task Management, Deployment Chat, Notifications,Auth System|
+| **kushagra** | Backend Developer |  User Management |
+| **Gaurav** | Frontend Developer |  Real-Time |
+| **sarvika** |   |
 
 ---
 
