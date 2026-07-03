@@ -1,4 +1,6 @@
+
 import authRoutes from "./routes/auth.routes.js";
+
 import userRoutes from "./routes/user.routes.js";
 import teamRoutes from "./routes/team.routes.js";
 import projectRoutes from "./routes/project.routes.js";
@@ -15,6 +17,8 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 
 const app = express();
+
+app.set('trust proxy', 1);
 
 // ═══════════════════════════════════════════════════════
 // MIDDLEWARE SETUP
@@ -94,6 +98,7 @@ app.get("/health", (req, res) => {
 
 // ─── 404 HANDLER ─────────────────────────────────────
 // If no route matched, return 404
+
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/teams", teamRoutes);
