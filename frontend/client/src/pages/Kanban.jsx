@@ -11,6 +11,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,          // ← ADD THIS
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -176,7 +177,69 @@ const KanbanColumn = ({ column, tasks, onAddTask }) => {
     </div>
   );
 };
+// ─── Column Component — droppable area add karo ──────────────────────────────
+import { useDroppable } from '@dnd-kit/core';
 
+const DroppableColumn = ({ column, tasks, onAddTask }) => {
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.id,
+  });
+
+  return (
+    <div
+      className={`flex flex-col rounded-2xl border ${column.border} ${column.bg}
+        p-3 min-h-[400px] w-72 flex-shrink-0 transition-colors duration-150
+        ${isOver ? 'ring-2 ring-brand-500 ring-offset-1' : ''}`}
+    >
+      {/* Column Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-2.5 h-2.5 rounded-full"
+            style={{ backgroundColor: column.color }}
+          />
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+            {column.label}
+          </span>
+          <span className="text-xs font-bold text-slate-400 bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded-full">
+            {tasks.length}
+          </span>
+        </div>
+        <button
+          onClick={() => onAddTask(column.id)}
+          className="p-1 rounded-lg hover:bg-white dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Tasks */}
+      <div ref={setNodeRef} className="flex flex-col gap-2 flex-1 min-h-[60px]">
+        <SortableContext
+          items={tasks.map((t) => t._id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {tasks.length === 0 ? (
+            <div
+              className={`flex-1 flex items-center justify-center text-xs
+                text-slate-400 py-8 border-2 border-dashed rounded-xl
+                ${isOver
+                  ? 'border-brand-400 bg-brand-500/5'
+                  : 'border-slate-200 dark:border-slate-800'
+                }`}
+            >
+              {isOver ? 'Drop here' : 'No tasks'}
+            </div>
+          ) : (
+            tasks.map((task) => (
+              <SortableTaskCard key={task._id} task={task} />
+            ))
+          )}
+        </SortableContext>
+      </div>
+    </div>
+  );
+};
 // ─── Add Task Modal ───────────────────────────────────────────────────────────
 const AddTaskModal = ({ isOpen, onClose, onSubmit, defaultStatus, teams, projects }) => {
   const [form, setForm] = useState({
@@ -432,49 +495,60 @@ const Kanban = () => {
     setActiveTask(task || null);
   };
 
-  const handleDragEnd = async (event) => {
-    const { active, over } = event;
-    setActiveTask(null);
+const handleDragEnd = async (event) => {
+  const { active, over } = event;
+  setActiveTask(null);
 
-    if (!over || active.id === over.id) return;
+  if (!over) return;
+  if (active.id === over.id) return;
 
-    const draggedTask = tasks.find(t => t._id === active.id);
-    if (!draggedTask) return;
+  const draggedTask = tasks.find((t) => t._id === active.id);
+  if (!draggedTask) return;
 
-    // Find which column the task was dropped into
-    let newStatus = draggedTask.status;
+  // FIX: Column ID ya Task ID — dono handle karo
+  let newStatus = draggedTask.status;
 
-    const overTask = tasks.find(t => t._id === over.id);
+  // Check 1: over.id ek column ID hai?
+  const overColumn = COLUMNS.find((c) => c.id === over.id);
+  if (overColumn) {
+    newStatus = overColumn.id;
+  } else {
+    // Check 2: over.id ek task ID hai — us task ka column kya hai?
+    const overTask = tasks.find((t) => t._id === over.id);
     if (overTask) {
       newStatus = overTask.status;
-    } else {
-      // Dropped on a column directly
-      const col = COLUMNS.find(c => c.id === over.id);
-      if (col) newStatus = col.id;
     }
+  }
 
-    if (newStatus === draggedTask.status) return;
+  // Agar status change nahi hua toh kuch mat karo
+  if (newStatus === draggedTask.status) return;
 
-    // Optimistic update
-    setTasks(prev =>
-      prev.map(t => t._id === draggedTask._id ? { ...t, status: newStatus } : t)
+  console.log(`[Kanban] Moving task "${draggedTask.title}" from ${draggedTask.status} → ${newStatus}`);
+
+  // Optimistic update — UI turant update karo
+  setTasks((prev) =>
+    prev.map((t) =>
+      t._id === draggedTask._id ? { ...t, status: newStatus } : t
+    )
+  );
+
+  // Backend call
+  try {
+    await apiCall(`/api/v1/tasks/${draggedTask._id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: newStatus }),
+    });
+    showToast(`Task moved to ${COLUMNS.find(c => c.id === newStatus)?.label}`, 'success');
+  } catch (err) {
+    // Revert on failure
+    setTasks((prev) =>
+      prev.map((t) =>
+        t._id === draggedTask._id ? { ...t, status: draggedTask.status } : t
+      )
     );
-
-    // Backend update
-    try {
-      await apiCall(`/api/v1/tasks/${draggedTask._id}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: newStatus }),
-      });
-    } catch (err) {
-      // Revert on failure
-      setTasks(prev =>
-        prev.map(t => t._id === draggedTask._id ? { ...t, status: draggedTask.status } : t)
-      );
-      showToast('Failed to update task status', 'error');
-    }
-  };
-
+    showToast('Failed to update task status', 'error');
+  }
+};
   const handleAddTask = (columnStatus) => {
     setDefaultStatus(columnStatus);
     setShowAddModal(true);
@@ -606,29 +680,30 @@ const Kanban = () => {
           </div>
         </div>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex-1 overflow-x-auto overflow-y-hidden p-4">
-            <div className="flex gap-4 h-full min-w-max pb-4">
-              {COLUMNS.map(column => (
-                <KanbanColumn
-                  key={column.id}
-                  column={column}
-                  tasks={getColumnTasks(column.id)}
-                  onAddTask={handleAddTask}
-                />
-              ))}
-            </div>
-          </div>
+        // Kanban component ke return mein DndContext update karo
+<DndContext
+  sensors={sensors}
+  collisionDetection={closestCorners}
+  onDragStart={handleDragStart}
+  onDragEnd={handleDragEnd}
+>
+  <div className="flex-1 overflow-x-auto overflow-y-hidden p-4">
+    <div className="flex gap-4 h-full min-w-max pb-4">
+      {COLUMNS.map((column) => (
+        <DroppableColumn   // FIX: KanbanColumn ki jagah DroppableColumn
+          key={column.id}
+          column={column}
+          tasks={getColumnTasks(column.id)}
+          onAddTask={handleAddTask}
+        />
+      ))}
+    </div>
+  </div>
 
-          <DragOverlay>
-            {activeTask ? <TaskCard task={activeTask} isDragging /> : null}
-          </DragOverlay>
-        </DndContext>
+  <DragOverlay dropAnimation={null}>
+    {activeTask ? <TaskCard task={activeTask} isDragging /> : null}
+  </DragOverlay>
+</DndContext>
       )}
 
       {/* Add Task Modal */}
