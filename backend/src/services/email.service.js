@@ -8,23 +8,16 @@ const getTransporter = () => {
   if (transporter) return transporter;
 
   transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,           // FIX: 587 ki jagah 465 (SSL)
-    secure: true,        // FIX: true for port 465
+    host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
+    port: parseInt(process.env.EMAIL_PORT) || 587,
+    secure: false,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
-    // FIX: Render ke liye timeout settings
-    connectionTimeout: 10000,
+    connectionTimeout: 15000,
     greetingTimeout: 10000,
-    socketTimeout: 15000,
-    tls: {
-      rejectUnauthorized: false,  // FIX: Render SSL issue
-    },
-    pool: true,
-    maxConnections: 3,
-    maxMessages: 50,
+    socketTimeout: 20000,
   });
 
   return transporter;
