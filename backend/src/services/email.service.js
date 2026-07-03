@@ -75,12 +75,14 @@ const sendEmail = async ({ to, subject, html, text }) => {
   try {
     const t = getTransporter();
     const info = await t.sendMail({
-      from: process.env.EMAIL_FROM || "IntellMeet <noreply@intellmeet.com>",
+      // ✅ Sahi Tarika: "Display Name <verified_email>" format use karo
+      from: `IntellMeet <${process.env.EMAIL_USER || 'ravindrasinghrajpurohit199@gmail.com'}>`, 
       to,
       subject,
       html,
       text: text || subject,
     });
+    console.log(`✅ Email sent successfully via Brevo to ${to}: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error(`[EmailService] Failed to send to ${to}:`, error.message);
